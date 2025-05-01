@@ -66,27 +66,15 @@ def compute_z(
         padding=True,
     ).to("cuda")
 
-    # locality_tok = tok(
-    #     [prompt.format(pseudo_subject) for prompt in all_prompts],
-    #     return_tensors="pt",
-    #     padding=True,
-    # ).to("cuda")
-
 
     # Compute rewriting targets
     rewriting_targets = torch.tensor(-100, device="cuda").repeat(
         len(rewriting_prompts), *input_tok["input_ids"].shape[1:]
     )
 
-    # locality_targets = torch.tensor(-100, device="cuda").repeat(
-    #     len(rewriting_prompts), *input_tok["input_ids"].shape[1:]
-    # )
-
-
     for i in range(len(rewriting_prompts)):
         ex_len = input_tok["attention_mask"][i].sum()
         rewriting_targets[i, ex_len - len(target_ids) : ex_len] = target_ids
-        # locality_targets[i, ex_len - len(old_ids) : ex_len] = old_ids
 
 
     # Compute indices of the tokens where the fact is looked up
@@ -96,13 +84,6 @@ def compute_z(
         )
         for i, prompt in enumerate(all_prompts)
     ]
-
-    # locality_look_idxs = [
-    #     find_fact_lookup_idx(
-    #         prompt, pseudo_subject, tok, hparams.fact_token, verbose=(i == 0)
-    #     )
-    #     for i, prompt in enumerate(all_prompts)
-    # ]
 
     # Finalize rewrite and loss layers
     loss_layer = max(hparams.v_loss_layer, layer)
@@ -157,14 +138,8 @@ def compute_z(
             edit_output=edit_output_fn,
         ) as tr:
             output = model(**input_tok, output_hidden_states=True)
-            # loc_output = model(**locality_tok, output_hidden_states=True)
 
             logits = output.logits
-            # loc_logits = loc_output.logits
-
-            # h_last = output.hidden_states[layer]
-            # print(h_last.shape)
-
             # Compute distribution for KL divergence
             kl_logits = torch.stack(
                 [
@@ -176,20 +151,6 @@ def compute_z(
             kl_log_probs = torch.nn.functional.log_softmax(kl_logits, dim=1)
             if kl_distr_init is None:
                 kl_distr_init = kl_log_probs.detach().clone()
-
-        # Compute loss on rewriting targets
-
-        # loc_full_repr = tr[hparams.layer_module_tmp.format(loss_layer)].output[0][
-        #     : len(rewriting_prompts)
-        # ]
-        # loc_log_probs = torch.log_softmax(ln_f(loc_full_repr) @ lm_w + lm_b, dim=2)
-        # loc_loss = torch.gather(
-        #     loc_log_probs,
-        #     2,
-        #     torch.where(locality_targets != -100, locality_targets, 0).unsqueeze(2),
-        # ).squeeze(2)
-        # loc_mask = (locality_targets != -100).float()
-
 
         # Compute loss on rewriting targets
         full_repr = tr[hparams.layer_module_tmp.format(loss_layer)].output[0][
@@ -205,15 +166,13 @@ def compute_z(
 
         # Aggregate total losses
         nll_loss_each = -(loss * mask).sum(1) / target_ids.size(0)
-        # loc_nll_loss_each = -(loc_loss * loc_mask).sum(1) / old_ids.size(0)
+
         nll_loss = nll_loss_each.mean()
-        # loc_nll_loss = loc_nll_loss_each.mean()
+
         kl_loss = hparams.kl_factor * torch.nn.functional.kl_div(
             kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean"
         )
-        # loc_kl_loss = hparams.kl_factor * torch.nn.functional.kl_div(
-        #     loc_kl_distr_init, loc_kl_log_probs, log_target=True, reduction="batchmean"
-        # )
+
         weight_decay = hparams.v_weight_decay * (
             torch.norm(delta) / torch.norm(target_init) ** 2
         )
@@ -226,7 +185,7 @@ def compute_z(
         else:
             sinkhorn_loss = torch.tensor(0.0)
             print("sinkhorn_loss", sinkhorn_loss)
-	# dynamic scale
+	# dynamic scale, custom the threshold
         while sinkhorn_loss > 1:
             sinkhorn_loss = sinkhorn_loss / 10.0
         # weight_decay = hparams.v_weight_decay * torch.norm(delta) ** 2
@@ -286,7 +245,7 @@ def compute_z(
         delta = delta * drop_mask.to(delta.device)
     #     # rescale
         delta = delta * (1 / (1-drop_p) )
-        print(delta)
+        # print(delta)
     ############################################
     target = target_init + delta     #  z_i  = h_i + delta
     # with open('delta_norm_new.txt', mode='a') as src:
