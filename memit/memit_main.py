@@ -38,7 +38,6 @@ COV_CACHE = {}
 
 
 
-
 def apply_memit_to_model(
     model: AutoModelForCausalLM,
     tok: AutoTokenizer,
@@ -65,30 +64,17 @@ def apply_memit_to_model(
         # for w_name, (ori_key_mat, ori_val_mat, key_mat, val_mat) in deltas.items():
         for w_name, (key_mat, val_mat) in deltas.items():
             key_mat, val_mat = key_mat.to("cuda"), val_mat.to("cuda")
-            # ori_key_mat, ori_val_mat = ori_key_mat.to("cuda"), ori_val_mat.to("cuda")
-            # print(key_mat.shape, val_mat.shape)
-            # [16384+add_num, edit_num]  ,  [4096, edit_num]
 
-S
             upd_matrix = key_mat @ val_mat.T
-
-
-            # ori_upd_matrix = ori_key_mat @ ori_val_mat.T
+ 
             w = nethook.get_parameter(model, w_name)
-            # print("W shape:",w.shape)    # W shape: torch.Size([4096, 16416])
-            # print(upd_matrix.shape)
-            # print(ori_upd_matrix.shape)
-
 
             upd_matrix = upd_matrix_match_shape(upd_matrix, w.shape)
-
 
             if return_orig_weights and w_name not in weights_copy:
                 weights_copy[w_name] = w.detach().clone()
 
             w[...] += upd_matrix.float()
-            # print(w)
-            # w[...] += test_upd_matrix.float()
 
     print(f"New weights successfully inserted into {list(deltas.keys())}")
 
@@ -139,25 +125,6 @@ def execute_memit(
     context_templates = get_context_templates(model, tok)
     z_layer = hparams.layers[-1]
     z_list = []
-    # torch.nn.init.xavier_normal_(extra_out_layer.weight)
-    # torch.nn.init.constant_(extra_out_layer.bias, 0.0)
-
-    with open('delta_norm.txt') as delta_log:
-         pre_deltas = delta_log.readlines()
-    pre_computed_delta=[]
-    # print(deltas)
-    for line in pre_deltas:
-        # print(line.strip())
-        pre_computed_delta.append(float(line.strip()))
-    sort_list = pre_computed_delta.copy()
-    sort_list.sort()
-
-    threshold = sort_list[9900]
-
-    un_learning_steps = 1
-
-
-
 
     for i,request in enumerate(requests):
 
@@ -185,9 +152,7 @@ def execute_memit(
 
         # Compute k/v pair if not loaded from cache
         if not data_loaded:
-        # if not data_loaded and not E_flag:
-        #     word_list.append(request['subject'])
-        #     template_list.append(request['prompt'])
+
             cur_z = compute_z(
                 model,
                 tok,
@@ -196,12 +161,9 @@ def execute_memit(
                 z_layer,
                 context_templates
             )
-            # TODO set_editor
             z_list.append(cur_z)
 
     zs = torch.stack(z_list, dim=1)
-
-
 
     # Insert
     for i, layer in enumerate(hparams.layers):
@@ -231,12 +193,8 @@ def execute_memit(
         print("z error", torch.linalg.norm(targets, dim=0).mean())
 
         repeat_factor = (layer_ks.size(1) // targets.size(1))
-        # repeat_factor_aug = (aug_ks.size(1) // targets.size(1))
-        # print(targets.shape)      # [4096, edit_num]
-        # print(repeat_factor)   #  1
-        targets = targets.repeat_interleave(repeat_factor, dim=1)
-        # targets_aug = targets.repeat_interleave(repeat_factor_aug, dim=1)
 
+        targets = targets.repeat_interleave(repeat_factor, dim=1)
 
         # Load covariance matrix
         force_recompute = False
@@ -255,22 +213,8 @@ def execute_memit(
 
         # Compute update in double precision
         layer_ks, targets = (layer_ks.double(), targets.double() )
-        # aug_ks, targets_aug = (aug_ks.double(), targets_aug.double())
 
-        # print(aug_ks.shape, targets.shape)
-        # print(cov.shape,layer_ks.shape)   #torch.Size([16384, 16384]) torch.Size([16416, 1])
-
-        # layer_ks_trunc, add_block = torch.split(layer_ks, cov.size(0), dim=0)    # edit
         # out_t = layer_ks @ layer_ks.T
-        if add_num > 0 :
-            cov_padding0 = torch.zeros([cov.size(0),add_num]).to(cov.device)
-            cov = torch.cat([cov,cov_padding0],dim=1)
-            cov_padding1 = torch.zeros([add_num,cov.size(1)]).to(cov.device)
-            cov = torch.cat([cov,cov_padding1],dim=0)
-
-
-        # print(layer_ks_trunc.shape, add_block.shape)
-        # print(layer_ks.shape)   # [16384+added_size, eidt_num]
         # eq.14
         adj_k = torch.linalg.solve(
             hparams.mom2_update_weight * cov.double() + layer_ks @ layer_ks.T,
@@ -285,13 +229,10 @@ def execute_memit(
         # Adjust update matrix shape
         weight_name = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
 
-
         upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)
 
-        # upd_matrix = upd_matrix_match_shape(upd_matrix, weights_trunc.shape)    # edit
-
         print("orig norm", torch.linalg.norm(weights[weight_name]))
-        # print("orig norm", torch.linalg.norm(weights_trunc))
+
         print("upd norm", torch.linalg.norm(upd_matrix))
 
         with torch.no_grad():
@@ -299,8 +240,6 @@ def execute_memit(
             deltas[weight_name] = (
                 adj_k.detach().cpu(),
                 resid.detach().cpu(),
-                # adj_k_aug.detach().cpu(),
-                # resid_aug.detach().cpu(),
             )
 
         # Clear GPU memory
@@ -308,9 +247,6 @@ def execute_memit(
         for x in [layer_ks, cur_zs, targets]:
             x.cpu()
             del x
-        # for x in [aug_ks, targets_aug]:
-        #     x.cpu()
-        #     del x
         torch.cuda.empty_cache()
 
     # Restore state of original model
