@@ -151,60 +151,6 @@ def main(
 
         start = time()
 
-        #################################################################
-        # with open('delta_norm.txt') as delta_log:
-        # with open('sig_norm.txt') as delta_log:
-        #     pre_deltas = delta_log.readlines()
-        # pre_computed_delta = []
-        # # print(deltas)
-        # for line in pre_deltas:
-        #     # print(line.strip())
-        #     pre_computed_delta.append(float(line.strip()))
-        # sort_list = pre_computed_delta.copy()
-        # sort_list.sort()
-        # group_dict = {}
-        # requests = [
-        #     {"case_id": record["case_id"], **record["requested_rewrite"]}
-        #     for record in record_chunks]
-        # for i, request in enumerate(requests):
-        #     group_dict[request['case_id']] = pre_computed_delta[i]
-        # # print(group_dict)
-        # sorted_item = sorted(group_dict.items(), key=lambda item: item[1])
-        # sorted_dict = {key: value for key, value in sorted_item}
-        # print(len(sorted_dict))
-        # group_subset = []
-        # for i, it in enumerate(sorted_dict):
-        #     # if i < 50:
-        #     # if 50<= i <100:
-        #     # if 100<= i <150:
-        #     # if 150<= i <200:
-        #     # if 200<= i <250:
-        #
-        #     # if 250<= i <300:
-        #     # if 300<= i <350:
-        #     # if 350<= i <400:
-        #     # if 400<= i <450:
-        #     # if 450<= i <500:
-        #
-        #     # if 500<= i <550:
-        #     # if 550<= i <600:
-        #     # if 600<= i <650:
-        #     # if 650<= i <700:
-        #     # if 700<= i <750:
-        #
-        #     # if 750<= i <800:
-        #     # if 800<= i <850:
-        #     # if 850<= i <900:
-        #     # if 900<= i <950:
-        #     if 950<= i <1000:
-        #         group_subset.append(it)
-        # print(group_subset)
-        # group_requests=[]
-        # for record in record_chunks:
-        #     if record['case_id'] in group_subset:
-        #         group_requests.append({"case_id": record["case_id"], **record["requested_rewrite"]})
-        # print(len(group_requests))
-        ###########################################################################
         edited_model, weights_copy = apply_algo(
             model,
             tok,
